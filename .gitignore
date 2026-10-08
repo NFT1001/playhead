@@ -1,0 +1,18 @@
+# secrets and signing: never commit
+*.jks
+*.keystore
+keystore.properties
+local.properties
+.env
+*.pem
+*.p12
+*.mobileprovision
+# build output
+build/
+.gradle/
+.idea/
+*.apk
+*.aab
+DerivedData/
+xcuserdata/
+node_modules/
