@@ -49,8 +49,8 @@ Lenovo Tab M10 (3rd Gen): Unisoc T610 (2x Cortex-A75 + 6x Cortex-A55), Mali-G52 
 
 ## Milestones
 - M0 scaffold (this folder, local git)                                   done
-- M1 Android shell: loads YouTube, script injected, panel works, fullscreen   <- current
-- M2 tabs, address bar, navigation polish
+- M1 Android shell: loads YouTube, script injected, panel works, fullscreen   done (emulator-verified)
+- M2 tabs, address bar, navigation polish                                    <- current
 - M3 native bridge (settings, decoder info) and network blocking
 - M4 updater (script channel first, then APK)
 - M5 performance pass on the tablet, then phone layouts
