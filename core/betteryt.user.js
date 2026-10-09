@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Better YouTube
 // @namespace    http://tampermonkey.net/
-// @version      5.4
+// @version      5.5
 // @description  Holds YouTube at the best quality your device can actually play, fixes stalls fast, blocks ads, works on Shorts, respects your manual choices, and adds extras (full-resolution frame capture, hide Shorts, dismiss "Continue watching?").
-// @author       brizzle
+// @author       NFT1001
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
@@ -16,7 +16,7 @@
 /*
 MIT License
 
-Copyright (c) 2026 brizzle
+Copyright (c) 2026 NFT1001
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -78,7 +78,7 @@ SOFTWARE.
     if (window.__betterYTLoaded) return;   // never run twice (e.g. two copies installed)
     window.__betterYTLoaded = true;
 
-    const VERSION = '5.4';
+    const VERSION = '5.5';
 
     // ---- Developer log: always keeps a small ring of what happened and which errors were swallowed, so a
     //      YouTube change that breaks something can be diagnosed afterwards. Console echo only in dev mode. ----
@@ -116,6 +116,10 @@ SOFTWARE.
     const IS_PHONE = IS_MOBILE_SITE || /iPhone|iPod|Android.*Mobile|Mobile.*Firefox/i.test(UA) || !!safe(() => navigator.userAgentData.mobile, false);
     const SAVE_DATA = !!safe(() => navigator.connection.saveData, false);
 
+    // Handed over by the Better YouTube Browser app before this script runs (decoders, screen, memory).
+    // null in a plain userscript manager, where the script falls back to browser-side guesses.
+    const NATIVE = safe(() => (window.__BYT_NATIVE && window.__BYT_NATIVE.v === 1 ? window.__BYT_NATIVE : null), null);
+
     // ==========================================
     // SETTINGS
     // ==========================================
@@ -127,8 +131,14 @@ SOFTWARE.
     const QL = { tiny: '144p', small: '240p', medium: '360p', large: '480p', hd720: '720p', hd1080: '1080p', hd1440: '1440p', hd2160: '2160p', hd2880: '2880p', highres: '4320p' };
     const PX = { 144: 'tiny', 240: 'small', 360: 'medium', 480: 'large', 720: 'hd720', 1080: 'hd1080', 1440: 'hd1440', 2160: 'hd2160', 2880: 'hd2880', 4320: 'highres' };
 
+    // What "Max" means. In the app: the best this device can play smoothly (hardware decoders and screen).
+    const NATIVE_RANK = NATIVE && RANK[NATIVE.ceilingTier] !== undefined ? RANK[NATIVE.ceilingTier] : 9;
+    const MAX_HINT = NATIVE
+        ? `Max = up to ${QL[NATIVE.ceilingTier]} on this device (${NATIVE.limitedBy === 'screen' ? 'screen size' : 'hardware decoder'} limit). Pick a higher tier to override.`
+        : 'Highest quality each video offers (up to 8K).';
+
     const QUALITY_OPTIONS = [
-        ['max', 'Max', 'Highest quality each video offers (up to 8K).'],
+        ['max', 'Max', MAX_HINT],
         ['hd2160', '2160p'],
         ['hd1440', '1440p'],
         ['hd1080', '1080p'],
@@ -196,7 +206,12 @@ SOFTWARE.
 
     const settings = loadSettings();
     devOn = settings.devLog;
-    const saveSettings = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ } };
+    // Tell the app which ad-request setting applies, so its network layer follows the panel's toggle.
+    const pushNative = () => {
+        const port = safe(() => window.BYTNative, null);
+        if (port) safe(() => port.postMessage(JSON.stringify({ adRequests: !!(settings.adBlock && settings.adRequests) })));
+    };
+    const saveSettings = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ } pushNative(); };
     saveSettings();
 
     // ==========================================
@@ -239,13 +254,14 @@ SOFTWARE.
     // Is AV1 hardware-decoded here? true / false / null (unknown). Cached so the very first
     // page load after install is the only one that runs before the answer is known.
     let av1Hw = (() => {
+        if (NATIVE && NATIVE.codecs && NATIVE.codecs.av1) return !!NATIVE.codecs.av1.hw;   // the OS knows: no guessing
         const v = safe(() => localStorage.getItem('ybAv1Hw'), null);
         return v === '1' ? true : (v === '0' ? false : null);
     })();
 
     const origDecodingInfo = safe(() => navigator.mediaCapabilities.decodingInfo.bind(navigator.mediaCapabilities), null);
 
-    if (origDecodingInfo) {
+    if (origDecodingInfo && !NATIVE) {
         safe(() => origDecodingInfo({
             type: 'media-source',
             video: { contentType: 'video/mp4; codecs="av01.0.08M.08"', width: 1920, height: 1080, bitrate: 4000000, framerate: 30 }
@@ -598,7 +614,7 @@ SOFTWARE.
     const codecShort = (s) => (/^av01/i.test(s) ? 'AV1' : /^vp0?9/i.test(s) ? 'VP9' : /^avc1/i.test(s) ? 'H.264' : /^vp0?8/i.test(s) ? 'VP8' : '');
 
     // The user's ceiling as a rank, before the smooth guard lowers it.
-    const baseRank = () => (settings.quality === 'max' ? 9 : (RANK[settings.quality] === undefined ? 9 : RANK[settings.quality]));
+    const baseRank = () => (settings.quality === 'max' ? NATIVE_RANK : (RANK[settings.quality] === undefined ? NATIVE_RANK : RANK[settings.quality]));
     const effectiveRank = () => (settings.smoothGuard ? Math.min(baseRank(), guard.capRank) : baseRank());
     const ceilingKey = () => KEY_BY_RANK[effectiveRank()];
 
@@ -1635,6 +1651,9 @@ SOFTWARE.
         add('Page data: ytInitialData', window.ytInitialData ? true : null, window.ytInitialData ? Object.keys(window.ytInitialData).slice(0, 8).join(', ') : 'absent');
         const msHooked = !!(window.MediaSource && window.MediaSource.__ybHooked);
         add('Codec hooks', msHooked, `MediaSource hooked: ${msHooked}, AV1 hardware: ${av1Hw}, last video type: ${lastVideoType || 'none yet'}`);
+        add('Native app info', NATIVE ? true : null, NATIVE
+            ? `${NATIVE.model || 'device'}: Max = ${NATIVE.ceilingTier} (${NATIVE.limitedBy} limit), hardware decode VP9 ${!!(NATIVE.codecs.vp9 && NATIVE.codecs.vp9.hw)}, AV1 ${!!(NATIVE.codecs.av1 && NATIVE.codecs.av1.hw)}, H.264 ${!!(NATIVE.codecs.avc && NATIVE.codecs.avc.hw)}`
+            : 'not running inside the app (plain userscript)');
         const fHooked = !!(window.fetch && window.fetch.__yb);
         add('Ad-blocking hooks', fHooked, `fetch wrapped: ${fHooked}, removed so far: player ${adStats.player}, feed ${adStats.feed}, requests ${adStats.requests}, skipped ${adStats.skipped}, warnings ${adStats.enforcement}`);
         add('YouTube client version', null, safe(() => window.ytcfg.get('INNERTUBE_CLIENT_VERSION'), '') || 'unknown');
@@ -1654,7 +1673,7 @@ SOFTWARE.
     function buildReport() {
         const p = getPlayer();
         return {
-            script: { name: 'Better YouTube', version: VERSION, settings: Object.assign({}, settings), device: { phone: IS_PHONE, mobileSite: IS_MOBILE_SITE, saveData: SAVE_DATA, av1Hardware: av1Hw } },
+            script: { name: 'Better YouTube', version: VERSION, settings: Object.assign({}, settings), device: { phone: IS_PHONE, mobileSite: IS_MOBILE_SITE, saveData: SAVE_DATA, av1Hardware: av1Hw, native: NATIVE } },
             env: {
                 userAgent: UA, page: location.hostname + location.pathname.replace(/\/[\w-]{6,}/g, '/\u2026'), shorts: isShorts(),
                 viewport: `${innerWidth}x${innerHeight}@${window.devicePixelRatio}`, language: navigator.language, darkAttribute: document.documentElement.hasAttribute('dark'),
@@ -1831,6 +1850,8 @@ SOFTWARE.
         qSeg.title = 'Your choice in YouTube\'s own quality menu overrides this for that video.';
         const cSeg = seg('Video codec', CODEC_OPTIONS, refs.c, 'codec');
         refs.codecHint = el('div', { class: 'hint', text: '' });
+        refs.qualityHint = el('div', { class: 'hint', text: NATIVE ? MAX_HINT : '' });
+        if (!NATIVE) refs.qualityHint.style.display = 'none';
 
         const toggle = (key, title, desc) => {
             const b = el('button', { class: 'sw', type: 'button', role: 'switch', 'aria-checked': 'false', 'aria-label': title, title: desc, on: { click: () => setSetting(key, !settings[key]) } });
@@ -1851,7 +1872,7 @@ SOFTWARE.
             icon('M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 12h6', 14), 'Save frame');
 
         refs.pages.play = el('div', { class: 'page' },
-            el('div', { class: 'sec', text: 'Quality ceiling' }), qSeg,
+            el('div', { class: 'sec', text: 'Quality ceiling' }), qSeg, refs.qualityHint,
             el('div', { class: 'sec', text: 'Codec' }), cSeg, refs.codecHint,
             el('div', { class: 'sec', text: 'Smooth playback' }),
             el('div', { class: 'rows' },
@@ -2206,7 +2227,7 @@ SOFTWARE.
     // Small debug / config handle
     window.betterYT = {
         get settings() { return Object.assign({}, settings); },
-        get device() { return { phone: IS_PHONE, mobileSite: IS_MOBILE_SITE, saveData: SAVE_DATA, av1Hardware: av1Hw, qualityCap: guard.capRank, userQuality: vid.userQuality }; },
+        get device() { return { phone: IS_PHONE, mobileSite: IS_MOBILE_SITE, saveData: SAVE_DATA, av1Hardware: av1Hw, native: NATIVE, qualityCap: guard.capRank, userQuality: vid.userQuality }; },
         set(key, value) {
             if (!(key in DEFAULTS)) { console.warn('[BetterYT] Unknown setting:', key); return; }
             setSetting(key, value);

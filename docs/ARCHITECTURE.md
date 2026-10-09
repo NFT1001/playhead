@@ -41,6 +41,14 @@ Lenovo Tab M10 (3rd Gen): Unisoc T610 (2x Cortex-A75 + 6x Cortex-A55), Mali-G52 
 6. v1 scope: tabs, address/search bar, back/forward/reload, YouTube-first start page, fullscreen video, the existing
    settings panel, blocking and the updater. Out of scope for v1: sync, extensions, downloads manager, passwords.
 
+## What the app tells the script (window.__BYT_NATIVE, version 1)
+Device model, memory, screen size and refresh rate, and for VP9, AV1, H.264 and HEVC whether a hardware decoder
+exists and the tallest picture it handles (at 30 and 60 fps). From these the app picks "Max": the tallest tier that
+both the decoders and the screen can use (a video fills the long edge at 16:9). It is probed once per Android
+build and cached (about 45 ms the first time, 4 ms after). An explicit tier chosen in the panel still wins.
+The script tells the app, through BYTNative.postMessage, whether "Block ad requests" is on, and the app's own
+request blocker (Blocker.kt) follows that switch. Its rules mirror the script's AD_REQ pattern.
+
 ## Honest limits
 - Blocking YouTube ads goes against YouTube's terms and YouTube changes often; expect ongoing maintenance.
 - Network-level blocking cannot see inside YouTube's own responses; that is what the script does.
@@ -50,8 +58,8 @@ Lenovo Tab M10 (3rd Gen): Unisoc T610 (2x Cortex-A75 + 6x Cortex-A55), Mali-G52 
 ## Milestones
 - M0 scaffold (this folder, local git)                                   done
 - M1 Android shell: loads YouTube, script injected, panel works, fullscreen   done (emulator-verified)
-- M2 tabs, address bar, navigation polish                                    <- current
-- M3 native bridge (settings, decoder info) and network blocking
+- M2 tabs, address bar, navigation polish                                    <- next
+- M3 native bridge: decoder-aware Max, request blocking                     done (emulator-verified)
 - M4 updater (script channel first, then APK)
 - M5 performance pass on the tablet, then phone layouts
 - M6 public GitHub release: README with screenshots, signed APK in Releases

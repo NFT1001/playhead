@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -20,6 +21,7 @@ import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -37,6 +39,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import org.json.JSONObject
 
 /**
  * M1: a single-tab browser shell. One WebView, a small toolbar, the Better YouTube script injected at
@@ -61,6 +64,7 @@ class MainActivity : ComponentActivity() {
     private var lastUrl = HOME
     private var scriptSource: String? = null
     private var scriptViaDocumentStart = false
+    private val debuggable by lazy { (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0 }
 
     private val backCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
@@ -137,6 +141,15 @@ class MainActivity : ComponentActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             imeOptions = EditorInfo.IME_ACTION_GO
             setSelectAllOnFocus(true)
+            // Idle: show just the site (clean). Focused: show the full address, selected, ready to replace.
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    setText(lastUrl)
+                    post { selectAll() }
+                } else {
+                    setText(displayUrl(lastUrl))
+                }
+            }
             setPadding(dp(16), 0, dp(16), 0)
             background = GradientDrawable().apply {
                 cornerRadius = dp(20).toFloat()
@@ -161,7 +174,7 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.WHITE)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(4), dp(2), dp(4), dp(2))
             addView(backBtn)
             addView(forwardBtn)
             addView(reloadBtn)
@@ -169,11 +182,23 @@ class MainActivity : ComponentActivity() {
             addView(homeBtn)
         }
 
+        // The thin line under the toolbar is always 2dp tall: the divider sits at its bottom and the load bar
+        // draws over it. Showing or hiding the bar never changes the page's height, so nothing reflows.
         loadBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            visibility = View.GONE
+            visibility = View.INVISIBLE
             progressTintList = ColorStateList.valueOf(Color.rgb(15, 15, 15))
+            progressBackgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2))
+        }
+        val divider = View(this).apply {
+            setBackgroundColor(Color.rgb(232, 232, 232))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1), Gravity.BOTTOM)
+        }
+        val strip = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2))
+            addView(divider)
+            addView(loadBar)
         }
 
         web = WebView(this).apply {
@@ -185,7 +210,7 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
             addView(toolbar)
-            addView(loadBar)
+            addView(strip)
             addView(web)
         }
 
@@ -237,7 +262,12 @@ class MainActivity : ComponentActivity() {
     private fun showUrl(url: String?) {
         if (url == null) return
         lastUrl = url
-        if (!urlBox.hasFocus()) urlBox.setText(url)
+        if (!urlBox.hasFocus()) urlBox.setText(displayUrl(url))
+    }
+
+    private fun displayUrl(url: String): String {
+        val host = Uri.parse(url).host ?: return url
+        return host.removePrefix("www.")
     }
 
     private fun go() {
@@ -272,9 +302,8 @@ class MainActivity : ComponentActivity() {
             // Lay the page out at the real window width so the desktop YouTube layout fits the tablet.
             useWideViewPort = false
             loadWithOverviewMode = false
-            setSupportZoom(true)
-            builtInZoomControls = true
-            displayZoomControls = false
+            setSupportZoom(false)
+            builtInZoomControls = false
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
             allowFileAccess = false
@@ -289,9 +318,13 @@ class MainActivity : ComponentActivity() {
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             WebView.setWebContentsDebuggingEnabled(true)
         }
+        installNativeBridge()
         installScript()
         web.webViewClient = Client()
         web.webChromeClient = chrome
+        web.overScrollMode = View.OVER_SCROLL_NEVER
+        // Keep the page's renderer at high priority so Android is less likely to kill it on a low-memory tablet.
+        web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
     }
 
     /** A desktop Chrome user agent that tracks the installed WebView version, so YouTube serves its desktop site. */
@@ -301,6 +334,18 @@ class MainActivity : ComponentActivity() {
         return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36"
     }
 
+    /** The script tells the app which of its settings the network layer should follow. */
+    private fun installNativeBridge() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
+        WebViewCompat.addWebMessageListener(web, "BYTNative", YOUTUBE_ORIGINS) { _, message, _, isMainFrame, _ ->
+            if (!isMainFrame) return@addWebMessageListener
+            try {
+                val data = message.data ?: return@addWebMessageListener
+                Blocker.enabled = JSONObject(data).optBoolean("adRequests", true)
+            } catch (_: Exception) { /* ignore a malformed message */ }
+        }
+    }
+
     private fun installScript() {
         val source = try {
             assets.open("betteryt.js").bufferedReader().use { it.readText() }
@@ -308,8 +353,10 @@ class MainActivity : ComponentActivity() {
             return
         }
         // The script was written for the top frame only. In subframes, mark it as already loaded so it exits at once.
-        val guard = "if (window.top !== window.self) { window.__betterYTLoaded = true; }\n"
-        scriptSource = guard + source
+        // In the top frame, hand it what the device can really do before it starts.
+        val device = DeviceInfo.collect(this).toString()
+        val preface = "if (window.top !== window.self) { window.__betterYTLoaded = true; } else { window.__BYT_NATIVE = $device; }\n"
+        scriptSource = preface + source
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(web, scriptSource!!, YOUTUBE_ORIGINS)
             scriptViaDocumentStart = true
@@ -317,6 +364,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private inner class Client : WebViewClient() {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            if (!request.isForMainFrame && Blocker.enabled && Blocker.shouldBlock(request.url)) {
+                Blocker.blocked.incrementAndGet()
+                if (debuggable) Log.d(TAG, "blocked ${request.url.host}${request.url.path}")
+                return Blocker.emptyResponse()
+            }
+            return null
+        }
+
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val scheme = request.url.scheme
             return !(scheme == "https" || scheme == "http")
@@ -336,7 +392,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onPageFinished(view: WebView, url: String) {
             loading = false
-            loadBar.visibility = View.GONE
+            loadBar.visibility = View.INVISIBLE
             showUrl(url)
             updateNav()
         }
@@ -390,6 +446,7 @@ class MainActivity : ComponentActivity() {
         const val HOME = "https://www.youtube.com/"
         const val SEARCH = "https://www.youtube.com/results?search_query="
         const val STATE_URL = "url"
+        const val TAG = "BYB"
         val YOUTUBE_ORIGINS = setOf("https://www.youtube.com", "https://m.youtube.com")
     }
 }
