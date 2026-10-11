@@ -44,7 +44,13 @@ object Search {
         "youtube" to ("YouTube" to "https://www.youtube.com/results?search_query="),
         "brave" to ("Brave Search" to "https://search.brave.com/search?q="),
         "ddg" to ("DuckDuckGo" to "https://duckduckgo.com/?q="),
-        "google" to ("Google" to "https://www.google.com/search?q=")
+        "google" to ("Google" to "https://www.google.com/search?q="),
+        "bing" to ("Bing" to "https://www.bing.com/search?q="),
+        "startpage" to ("Startpage" to "https://www.startpage.com/do/search?q="),
+        "ecosia" to ("Ecosia" to "https://www.ecosia.org/search?q="),
+        "qwant" to ("Qwant" to "https://www.qwant.com/?q="),
+        "yahoo" to ("Yahoo" to "https://search.yahoo.com/search?p="),
+        "wikipedia" to ("Wikipedia" to "https://en.wikipedia.org/w/index.php?search=")
     )
 
     fun name(key: String): String = (ENGINES[key] ?: ENGINES.getValue("youtube")).first
