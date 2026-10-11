@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BetterYouTubeBrowser"
+rootProject.name = "Playhead"
 include(":app")

@@ -1,4 +1,4 @@
-package app.betteryt.browser
+package app.playhead.browser
 
 import android.net.Uri
 import android.webkit.WebResourceResponse

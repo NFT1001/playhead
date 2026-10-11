@@ -1,4 +1,4 @@
-package app.betteryt.browser
+package app.playhead.browser
 
 import android.app.ActivityManager
 import android.content.Context

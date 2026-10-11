@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as the stock light theme, with the accent colour set to near-black so dialogs and the text cursor
+         match the app's monochrome look instead of the platform's teal. -->
+    <style name="Theme.Playhead" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#0F0F0F</item>
+        <item name="android:colorControlActivated">#0F0F0F</item>
+        <item name="android:colorPrimary">#FFFFFF</item>
+        <item name="android:textColorHighlight">#33000000</item>
+    </style>
+</resources>
