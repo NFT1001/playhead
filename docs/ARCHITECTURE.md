@@ -1,4 +1,6 @@
-# Architecture and decisions
+# Playhead: architecture and decisions
+
+Playhead (app.playhead.browser) is the app. "Better YouTube" is the name of the script inside it.
 
 ## Goal
 A fast, light, YouTube-first Android browser: Brave-style protection, with the Better YouTube quality, recovery and
@@ -8,7 +10,7 @@ phones after that.
 ## Target device (first)
 Lenovo Tab M10 (3rd Gen): Unisoc T610 (2x Cortex-A75 + 6x Cortex-A55), Mali-G52 MP2, 3 or 4 GB RAM,
 10.1" 1920x1200 60 Hz IPS, Android 11 (upgradable to 12). A budget SoC, so:
-- keep memory and CPU use low: one WebView alive at a time, no heavy UI, no background work while idle
+- keep memory and CPU use low: at most two WebViews alive (see Tabs), no heavy UI, no background work while idle
 - a quality ceiling above 1080p buys little on a 1200p panel and costs decode power
 - ask the OS what the video decoders can really do (MediaCodecList) instead of guessing
 
@@ -39,7 +41,21 @@ Lenovo Tab M10 (3rd Gen): Unisoc T610 (2x Cortex-A75 + 6x Cortex-A55), Mali-G52 
    back it up somewhere safe.
 
 6. v1 scope: tabs, address/search bar, back/forward/reload, YouTube-first start page, fullscreen video, the existing
-   settings panel, blocking and the updater. Out of scope for v1: sync, extensions, downloads manager, passwords.
+   settings panel, blocking and the updater. Bookmarks, history, settings, downloads and find in page are already in.
+   Out of scope for v1: sync, extensions, passwords.
+
+7. Search engines are a fixed built-in list (Support.kt, Search.ENGINES): each is a name plus a URL prefix that the
+   encoded query is appended to. A user-defined engine would be a URL template with a %s placeholder; not built yet.
+
+## Tabs (built for about 100 tabs)
+Only the active tab and one recent tab (hotLimit 1; 0 on low-RAM devices) keep a live WebView. Every other tab is
+saved to disk: files/tabs/<id>.state (WebView state), <id>.jpg (thumbnail) and tabs.json (the list, debounced writes).
+Opening a tab restores it. onTrimMemory drops background WebViews, and background tabs have media paused. The switcher
+is a RecyclerView grid with a pooled set of cards. Popups and target=_blank links open as new tabs, and Back closes
+them and returns to the opener.
+
+Debug builds only: `am start ... --ei open_tabs 100` and `--ei cycle_tabs 30 --el cycle_ms 2500` for stress tests,
+log tags PLH (tab and live counts, blocked requests) and BYB (device info timing), and tools/cdp.mjs for DevTools.
 
 ## What the app tells the script (window.__BYT_NATIVE, version 1)
 Device model, memory, screen size and refresh rate, and for VP9, AV1, H.264 and HEVC whether a hardware decoder
@@ -58,8 +74,8 @@ request blocker (Blocker.kt) follows that switch. Its rules mirror the script's 
 ## Milestones
 - M0 scaffold (this folder, local git)                                   done
 - M1 Android shell: loads YouTube, script injected, panel works, fullscreen   done (emulator-verified)
-- M2 tabs, address bar, navigation polish                                    <- next
+- M2 tabs, address bar, navigation polish                                    done (emulator-verified)
 - M3 native bridge: decoder-aware Max, request blocking                     done (emulator-verified)
-- M4 updater (script channel first, then APK)
+- M4 updater (script channel first, then APK), release signing key             <- next
 - M5 performance pass on the tablet, then phone layouts
 - M6 public GitHub release: README with screenshots, signed APK in Releases
