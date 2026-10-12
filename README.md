@@ -4,9 +4,9 @@ A fast, light Android browser made for YouTube. It has the Better YouTube engine
 quality your device can really play, fixes stalls fast, blocks ad requests and keeps audio steady. It is meant to
 install from GitHub and update itself.
 
-Status: early development (v0.5.0). Not released yet. See docs/ARCHITECTURE.md for decisions, limits and milestones.
+Status: early development (v0.5.0). Download playhead.apk from the latest release (Releases page). See docs/ARCHITECTURE.md for decisions, limits and milestones.
 
-Built first for a Lenovo Tab M10 (3rd Gen) tablet, then phones. Android only.
+Tested on an emulator so far, not yet on real hardware. Built first for a Lenovo Tab M10 (3rd Gen) tablet, then phones. Android only.
 
 ## What works today
 - Tabs (a tab switcher grid, built to stay smooth with about 100 tabs), address and search bar, back/forward/reload
