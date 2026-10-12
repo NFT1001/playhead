@@ -33,6 +33,19 @@ class Prefs(context: Context) {
         get() = sp.getString("search", "youtube") ?: "youtube"
         set(v) { sp.edit().putString("search", v).apply() }
 
+    var autoUpdate: Boolean
+        get() = sp.getBoolean("autoUpdate", true)
+        set(v) { sp.edit().putBoolean("autoUpdate", v).apply() }
+
+    var lastUpdateCheck: Long
+        get() = sp.getLong("lastUpdateCheck", 0L)
+        set(v) { sp.edit().putLong("lastUpdateCheck", v).apply() }
+
+    /** Overrides where updates come from. Only set by debug builds, for testing against a local server. */
+    var updateBase: String?
+        get() = sp.getString("updateBase", null)
+        set(v) { sp.edit().putString("updateBase", v).apply() }
+
     /** Tablets get the desktop site by default; phones get the mobile one. */
     var desktopSite: Boolean
         get() = sp.getBoolean("desktop", tablet)

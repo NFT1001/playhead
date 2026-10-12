@@ -56,16 +56,18 @@ object ScriptHolder {
     fun get(context: Context): String? {
         if (loaded) return cached
         loaded = true
-        val source = try {
-            context.assets.open("betteryt.js").bufferedReader().use { it.readText() }
-        } catch (_: Exception) {
-            return null
-        }
+        val source = ScriptStore.load(context)?.source ?: return null
         val device = DeviceInfo.collect(context).toString()
         // The script was written for the top frame only: in subframes mark it as loaded so it exits at once.
         cached = "if (window.top !== window.self) { window.__betterYTLoaded = true; } " +
             "else { window.__BYT_NATIVE = $device; }\n" + source
         return cached
+    }
+
+    /** A newer script was downloaded: tabs created from now on use it. */
+    fun invalidate() {
+        loaded = false
+        cached = null
     }
 }
 

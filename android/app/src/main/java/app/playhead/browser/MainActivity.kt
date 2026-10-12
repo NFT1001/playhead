@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -65,6 +66,7 @@ class MainActivity : ComponentActivity(), BrowserHost, TabManager.Callbacks {
 
     private val io = Executors.newSingleThreadExecutor()
     private val ui = Handler(Looper.getMainLooper())
+    private val updates by lazy { UpdateManager(this, prefs) }
 
     private lateinit var tabs: TabManager
     private lateinit var factory: WebViewFactory
@@ -140,6 +142,8 @@ class MainActivity : ComponentActivity(), BrowserHost, TabManager.Callbacks {
         onBackPressedDispatcher.addCallback(this, backCallback)
         if (!tabs.restore()) tabs.newTab(null)
         if (savedInstanceState == null) handleIntent(intent)
+        // Look for updates a few seconds after start, so it never competes with the first page.
+        ui.postDelayed({ updates.checkIfDue() }, 5000)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -770,6 +774,7 @@ class MainActivity : ComponentActivity(), BrowserHost, TabManager.Callbacks {
         } catch (_: Exception) {
             ""
         }
+        val scriptVersion = ScriptStore.load(this)?.version ?: "?"
         fun rows(): List<ListPanel.Row> = listOf(
             ListPanel.Row("Search engine", Search.name(prefs.searchEngine), onClick = {
                 pickEngine {
@@ -785,7 +790,30 @@ class MainActivity : ComponentActivity(), BrowserHost, TabManager.Callbacks {
                 }
             ),
             ListPanel.Row("Clear browsing data", "History, cookies and cache", onClick = { clearData() }),
-            ListPanel.Row("About Playhead", "Version $version, with the Better YouTube engine", onClick = {})
+            ListPanel.Row(
+                "Updates", updates.status.ifEmpty { "Tap to check for updates" },
+                onClick = {
+                    val a = updates.available
+                    if (a != null) {
+                        confirm("Install Playhead ${a.name}?", "Install") {
+                            updates.install(this) { msg ->
+                                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(this, "Checking...", Toast.LENGTH_SHORT).show()
+                        updates.check { p.update(rows()) }
+                    }
+                }
+            ),
+            ListPanel.Row(
+                "Automatic updates", "Check in the background about twice a day", checked = prefs.autoUpdate,
+                onClick = {
+                    prefs.autoUpdate = !prefs.autoUpdate
+                    p.update(rows())
+                }
+            ),
+            ListPanel.Row("About Playhead", "Version $version, Better YouTube script $scriptVersion", onClick = {})
         )
         p.show("Settings", rows())
         showPanel(p)
@@ -985,6 +1013,8 @@ class MainActivity : ComponentActivity(), BrowserHost, TabManager.Callbacks {
 
     private fun debugIntent(i: Intent?) {
         if (!debuggable || i == null) return
+        i.getStringExtra("update_url")?.let { prefs.updateBase = it.ifEmpty { null } }
+        if (i.getBooleanExtra("update_check", false)) updates.check { Log.d("PLH", "update: $it") }
         val open = i.getIntExtra("open_tabs", 0)
         if (open > 0) {
             repeat(open) { k ->
