@@ -16,3 +16,6 @@ build/
 DerivedData/
 xcuserdata/
 node_modules/
+
+# release output
+dist/

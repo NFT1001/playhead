@@ -76,6 +76,26 @@ request blocker (Blocker.kt) follows that switch. Its rules mirror the script's 
 - M1 Android shell: loads YouTube, script injected, panel works, fullscreen   done (emulator-verified)
 - M2 tabs, address bar, navigation polish                                    done (emulator-verified)
 - M3 native bridge: decoder-aware Max, request blocking                     done (emulator-verified)
-- M4 updater (script channel first, then APK), release signing key             <- next
+- M4 updater (script channel, then APK), release signing key  done (emulator-verified)
 - M5 performance pass on the tablet, then phone layouts
 - M6 public GitHub release: README with screenshots, signed APK in Releases
+
+## Updates and release signing
+- Source: the latest GitHub Release (UpdateManager.kt, BuildConfig.UPDATE_BASE). A release has three files:
+  manifest.json (versions plus a SHA-256 for the script and the APK), betteryt.user.js and playhead.apk.
+  tools/make-release.ps1 builds a signed release and writes them to dist/ (git-ignored). It never uploads anything.
+- Script channel: checked in the background at most about every 12 hours (setting "Automatic updates", on by default).
+  The download must match the manifest hash, look like the Better YouTube script and carry the manifest version, or it
+  is thrown away. It is stored in files/script, used only with the app version it was downloaded for, and only while it
+  is newer than the bundled copy. New tabs use it; open tabs keep the old one until they reload.
+- App channel: the manifest only reports a newer versionCode. Installing is always the person's choice (Settings >
+  Updates > Install): the APK is downloaded, hash-checked, confirmed to be Playhead at the expected version, then handed to
+  PackageInstaller. Android shows its own confirmation (Android 11 always does), and refuses it if the signing key differs.
+- Limit: the hash is checked against a manifest from the same place, so it protects against damaged or swapped downloads,
+  not against a compromised GitHub account. Only the APK has a real signature check (done by Android).
+- Signing key: playhead-release.jks lives outside the repo (see signing.properties next to it). Builds read its path from
+  the PLAYHEAD_SIGNING environment variable. It must never change or be lost: installed copies can only update to APKs
+  signed with the same key. The first release APK is signed differently from debug builds, so debug builds must be
+  uninstalled once before installing a release.
+- Testing without publishing: debug builds accept `--es update_url http://localhost:8099/` and `--ez update_check true`
+  and may use plain http to localhost only; serve manifest.json, betteryt.user.js and playhead.apk from a local folder.

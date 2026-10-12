@@ -38,8 +38,8 @@ android {
         applicationId = "app.playhead.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         // Where the app looks for updates. Files: manifest.json, betteryt.user.js, playhead.apk.
         buildConfigField("String", "UPDATE_BASE", "\"https://github.com/NFT1001/playhead/releases/latest/download/\"")
     }
