@@ -29,6 +29,18 @@ class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
     private val tablet = context.resources.configuration.smallestScreenWidthDp >= 600
 
+    init {
+        Search.setCustom(sp.getString("customName", null), sp.getString("customUrl", null))
+    }
+
+    val customName: String? get() = sp.getString("customName", null)
+    val customUrl: String? get() = sp.getString("customUrl", null)
+
+    fun saveCustomEngine(name: String, url: String) {
+        sp.edit().putString("customName", name).putString("customUrl", url).apply()
+        Search.setCustom(name, url)
+    }
+
     var searchEngine: String
         get() = sp.getString("search", "youtube") ?: "youtube"
         set(v) { sp.edit().putString("search", v).apply() }
@@ -66,7 +78,28 @@ object Search {
         "wikipedia" to ("Wikipedia" to "https://en.wikipedia.org/w/index.php?search=")
     )
 
-    fun name(key: String): String = (ENGINES[key] ?: ENGINES.getValue("youtube")).first
+    fun name(key: String): String {
+        if (key == "custom" && customTemplate != null) return customName ?: "Custom"
+        return (ENGINES[key] ?: ENGINES.getValue("youtube")).first
+    }
+
+    private var customName: String? = null
+    private var customTemplate: String? = null
+
+    fun setCustom(name: String?, template: String?) {
+        customName = name
+        customTemplate = template
+    }
+
+    fun hasCustom() = customTemplate != null
+
+    /** A custom engine is a web address with %s where the search words go. Returns what is wrong, or null if it is fine. */
+    fun checkTemplate(t: String): String? = when {
+        !t.startsWith("https://") -> "The address must start with https://"
+        !t.contains("%s") -> "The address must contain %s where the search words go"
+        Uri.parse(t.replace("%s", "x")).host.isNullOrEmpty() -> "That doesn't look like a web address"
+        else -> null
+    }
 
     /** What the user typed becomes an address: a web address as is (always https), anything else a search. */
     fun resolve(input: String, engine: String): String? {
@@ -76,6 +109,8 @@ object Search {
         if (t.startsWith("http://")) return "https://" + t.removePrefix("http://")
         val looksLikeAddress = !t.contains(' ') && (t.contains('.') || t.startsWith("localhost"))
         if (looksLikeAddress) return "https://$t"
+        val template = if (engine == "custom") customTemplate else null
+        if (template != null) return template.replace("%s", Uri.encode(t))
         return (ENGINES[engine] ?: ENGINES.getValue("youtube")).second + Uri.encode(t)
     }
 }

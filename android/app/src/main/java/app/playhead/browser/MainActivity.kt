@@ -820,16 +820,64 @@ class MainActivity : ComponentActivity(), BrowserHost, TabManager.Callbacks {
     }
 
     private fun pickEngine(done: () -> Unit) {
-        val keys = Search.ENGINES.keys.toList()
-        val names = keys.map { Search.name(it) }.toTypedArray()
+        val keys = Search.ENGINES.keys.toList() + if (Search.hasCustom()) listOf("custom") else emptyList()
+        val names = keys.map { Search.name(it) } + if (Search.hasCustom()) "Edit custom..." else "Add custom..."
         AlertDialog.Builder(this)
             .setTitle("Search engine")
-            .setSingleChoiceItems(names, keys.indexOf(prefs.searchEngine)) { d, which ->
-                prefs.searchEngine = keys[which]
+            .setSingleChoiceItems(names.toTypedArray(), keys.indexOf(prefs.searchEngine)) { d, which ->
                 d.dismiss()
-                done()
+                if (which < keys.size) {
+                    prefs.searchEngine = keys[which]
+                    done()
+                } else {
+                    editCustomEngine(done)
+                }
             }
             .show()
+    }
+
+    /** A custom search engine: a name and a web address with %s where the search words go. */
+    private fun editCustomEngine(done: () -> Unit) {
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val nameBox = EditText(this).apply {
+            hint = "Name"
+            setText(prefs.customName ?: "")
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine()
+        }
+        val urlBox = EditText(this).apply {
+            hint = "https://example.com/search?q=%s"
+            setText(prefs.customUrl ?: "")
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+        }
+        val form = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+            addView(nameBox)
+            addView(urlBox)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Custom search engine")
+            .setMessage("Use %s where the search words go. Tip: search for test on the site, copy the address, and replace test with %s.")
+            .setView(form)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save", null)
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val url = urlBox.text.toString().trim()
+            val problem = Search.checkTemplate(url)
+            if (problem != null) {
+                Toast.makeText(this, problem, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val host = Uri.parse(url.replace("%s", "x")).host ?: "Custom"
+            prefs.saveCustomEngine(nameBox.text.toString().trim().ifEmpty { host.removePrefix("www.") }, url)
+            prefs.searchEngine = "custom"
+            dialog.dismiss()
+            done()
+        }
     }
 
     private fun setDesktop(on: Boolean) {
